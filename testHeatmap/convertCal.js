@@ -1,8 +1,8 @@
 const fs = require('fs');
 const csv = require('csvtojson');
 
-const inputFile = 'Nevada_train_data.csv';   // Your input
-const outputFile = 'Nevada_heatmap_data.js';  // ✅ NEW output file name
+const inputFile = 'California_train_data.csv';   // Your California input
+const outputFile = 'California_heatmap_data.js'; // ✅ New output for California
 
 csv()
     .fromFile(inputFile)

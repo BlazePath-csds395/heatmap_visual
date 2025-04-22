@@ -1,50 +1,124 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src = "Leaflet.heat-gh-pages/dist/leaflet-heat.js"></script>
-    <style>
-        #map {position: absolute; top: 0; bottom: 0; left: 0; right: 0;}
-    </style>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content ="IE-edge">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Wildfire Heatmap (Fixed)</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="Leaflet.heat-gh-pages/dist/leaflet-heat.js"></script>
+
+    <style>
+        /* Fullscreen map */
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+        }
+
+        /* Flex container for label + dropdown */
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 20px; /* Adjust spacing */
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            font-size: 16px;
+        }
+
+        #controls label {
+            margin-right: 10px;
+            font-weight: bold;
+        }
+
+        #controls select {
+            font-size: 16px;
+            padding: 5px;
+            border-radius: 4px;
+        }
+    </style>
 </head>
+
 <body>
-    <div id = "map"></div>
-    
-    <script type = "module">
-        import data from '../data.js'; // Import fire data
-        var map = L.map('map').setView([38.690003, -100.809859], 5);
+
+    <!-- Flexbox container for label + dropdown -->
+    <div id="controls">
+        <label for="stateSelector">Choose a State:</label>
+        <select id="stateSelector">
+            <option value="Nevada_heatmap_data.js">Nevada</option>
+            <option value="Arizona_heatmap_data.js">Arizona</option>
+            <option value="California_heatmap_data.js">California</option>
+        </select>
+    </div>
+
+    <div id="map"></div>
+
+    <script type="module">
+        let map = L.map('map').setView([36.7783, -119.4179], 5); // Initial view centered near CA
+
         L.tileLayer('https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=nD7H8ZZ1RzoICZ9GfYUN', {
             attribution: '<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>'
         }).addTo(map);
-        if (data && data.length > 0) {
-        console.log("✅ Loaded data:", data); // Debugging: Check loaded data
 
-        // Convert `data.js` into `[latitude, longitude, intensity]` format
-        var heatData = data
-            .filter(entry => entry.latitude && entry.longitude && entry.severity !== null) // Remove null values
-            .map(entry => [entry.latitude, entry.longitude, entry.severity]);
+        let heat; // Will hold the heatmap layer
 
-        if (heatData.length > 0) {
-            // ✅ Add heatmap only if data exists
-            var heat = L.heatLayer(heatData, {
-                radius: 25,
-                blur: 15,
-                maxZoom: 10,
-                minOpacity: 0.4,
-                gradient: { 0.4: 'blue', 0.65: 'lime', 1: 'red' }
-            }).addTo(map);
-        } else {
-            console.warn("⚠ No valid data for heatmap.");
+        // Function to load heatmap data
+        async function loadHeatmap(fileName) {
+            if (heat) {
+                map.removeLayer(heat); // Remove old heatmap if exists
+            }
+
+            try {
+                const module = await import(`./${fileName}`);
+                const data = module.default;
+
+                console.log("✅ Loaded dataset:", data);
+
+                const heatData = data
+                    .filter(entry =>
+                        entry.latitude &&
+                        entry.longitude &&
+                        entry.severity !== null &&
+                        !isNaN(entry.severity) &&
+                        entry.severity > 0
+                    )
+                    .map(entry => [entry.latitude, entry.longitude, entry.severity * 3]); // Scale severity slightly
+
+                if (heatData.length > 0) {
+                    heat = L.heatLayer(heatData, {
+                        radius: 20,    // 🔥 Smaller radius for less blob effect
+                        blur: 15,
+                        maxZoom: 8,
+                        minOpacity: 0.5,
+                        gradient: { 0.4: 'blue', 0.65: 'lime', 1: 'red' }
+                    }).addTo(map);
+                } else {
+                    console.warn("⚠ No valid data for heatmap.");
+                }
+            } catch (error) {
+                console.error("❌ Error loading file:", error);
+            }
         }
-    } else {
-        console.error(" Error: No data found in data.js.");
-    }
-</script>
+
+        // Load Nevada heatmap by default
+        loadHeatmap('Nevada_heatmap_data.js');
+
+        // When user selects a state
+        document.getElementById('stateSelector').addEventListener('change', function(e) {
+            const selectedFile = e.target.value;
+            loadHeatmap(selectedFile);
+        });
+    </script>
+
 </body>
 </html>
